@@ -13,7 +13,7 @@ import configparser
 #import ConfigParser
 
 from keras.models import Model
-from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Reshape, core, Dropout, AveragePooling2D
+from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Reshape, core, Dropout
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
 from keras import backend as K
@@ -28,76 +28,36 @@ from help_functions import *
 from extract_patches import get_data_training
 
 
-def get_encoder_part(inputs, numberOfFilters, addPoolingLayer, pooling_type, kernel):
-    print('get_encoder_part()' + str(inputs) + str(numberOfFilters) + str(addPoolingLayer) + str(kernel))
-    conv1 = Conv2D(numberOfFilters, kernel, activation='relu', padding='same',data_format='channels_first')(inputs)
-    conv1 = Dropout(0.2)(conv1)
-    conv1 = Conv2D(numberOfFilters, kernel, activation='relu', padding='same',data_format='channels_first')(conv1)
-    if (addPoolingLayer):
-        if pooling_type == 1:
-            pool1 = MaxPooling2D((2, 2))(conv1)
-        else:
-            pool1 = AveragePooling2D((2, 2))(conv1)
-        return pool1, conv1
-    else:
-        return conv1, conv1
-
-def get_decoder_part(inputs, numberOfFilters, encoder, kernel):
-    print('get_decoder_part()' + str(inputs) + str(numberOfFilters) + str(encoder) + str(kernel))
-    up = UpSampling2D(size=(2, 2))(inputs)
-    up = concatenate([encoder, up],axis=1)
-    conv = Conv2D(numberOfFilters, kernel, activation='relu', padding='same',data_format='channels_first')(up)
-    conv = Dropout(0.2)(encoder)
-    conv = Conv2D(numberOfFilters, kernel, activation='relu', padding='same',data_format='channels_first')(conv)
-    return conv
 
 #Define the neural network
-def get_unet(n_ch,patch_height,patch_width, network_depth, number_filters, pooling_type, kernel, model_optimizer):
-    print('get_unet() '+str(n_ch) + str(patch_height) + str(patch_width) + str(network_depth) + str(number_filters) + str(kernel) + str(optimizer))
+def get_unet(n_ch,patch_height,patch_width):
     inputs = Input(shape=(n_ch,patch_height,patch_width))
+    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same',data_format='channels_first')(inputs)
+    conv1 = Dropout(0.2)(conv1)
+    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same',data_format='channels_first')(conv1)
+    pool1 = MaxPooling2D((2, 2))(conv1)
+    #
+    conv2 = Conv2D(64, (3, 3), activation='relu', padding='same',data_format='channels_first')(pool1)
+    conv2 = Dropout(0.2)(conv2)
+    conv2 = Conv2D(64, (3, 3), activation='relu', padding='same',data_format='channels_first')(conv2)
+    pool2 = MaxPooling2D((2, 2))(conv2)
 
-    if network_depth != len(number_filters):
-        raise ValueError('network_depth and number_filters count should be the same')
-
-    # get the kernel tuple
-    if (kernel == 1):
-        kernel_tuple = (3,3)
-    elif (kernel == 2):
-        kernel_tuple = (5,5)
-    elif (kernel == 3):
-        kernel_tuple = (3,5)
-    else:
-        kernel_tuple = (5,3)
-
-    if (model_optimizer == 1):
-        optimizer_string = 'sgd'
-    elif (model_optimizer == 2):
-        optimizer_string = 'adam'
-    elif (model_optimizer == 3):
-        optimizer_string = 'adamax'
-    else:
-        optimizer_string = 'nadam'
-
-    encoders = []
-    network = inputs
-
-    for d in range(1, network_depth+1):
-        network, encoder = get_encoder_part(network, int(number_filters[d-1]), d != network_depth, pooling_type, kernel_tuple)
-        encoders.append(encoder)
-
-    for d in range(network_depth-1, 0, -1):
-        network = get_decoder_part(network, int(number_filters[d-1]), encoders[d-1], kernel_tuple)
-
-    network = Conv2D(2, (1, 1), activation='relu',padding='same',data_format='channels_first')(network)
-    network = core.Reshape((2,patch_height*patch_width))(network)
-    network = core.Permute((2,1))(network)
+    up2 = UpSampling2D(size=(2, 2))(conv2)
+    up2 = concatenate([conv1,up2], axis=1)
+    conv5 = Conv2D(32, (3, 3), activation='relu', padding='same',data_format='channels_first')(up2)
+    conv5 = Dropout(0.2)(conv5)
+    conv5 = Conv2D(32, (3, 3), activation='relu', padding='same',data_format='channels_first')(conv5)
+    #
+    conv6 = Conv2D(2, (1, 1), activation='relu',padding='same',data_format='channels_first')(conv5)
+    conv6 = core.Reshape((2,patch_height*patch_width))(conv6)
+    conv6 = core.Permute((2,1))(conv6)
     ############
-    network = core.Activation('softmax')(network)
+    conv7 = core.Activation('softmax')(conv6)
 
-    model = Model(inputs=inputs, outputs=network)        
+    model = Model(inputs=inputs, outputs=conv7)
 
     # sgd = SGD(lr=0.01, decay=1e-6, momentum=0.3, nesterov=False)
-    model.compile(optimizer=optimizer_string, loss='categorical_crossentropy',metrics=['accuracy'])
+    model.compile(optimizer='sgd', loss='categorical_crossentropy',metrics=['accuracy'])
 
     return model
 
@@ -197,13 +157,7 @@ visualize(group_images(patches_masks_train[0:N_sample,:,:,:],5),'./'+name_experi
 n_ch = patches_imgs_train.shape[1]
 patch_height = patches_imgs_train.shape[2]
 patch_width = patches_imgs_train.shape[3]
-network_depth = int(config.get('training settings','network_depth'))
-number_filters = config.get('training settings','number_filters').split(',')
-pooling_type = int(config.get('training settings','pooling_type'))
-kernel = int(config.get('training settings','kernel'))
-optimizer = int(config.get('training settings','optimizer'))
-
-model = get_unet(n_ch, patch_height, patch_width, network_depth, number_filters, pooling_type, (3,3), 'adam')  #the U-net model
+model = get_unet(n_ch, patch_height, patch_width)  #the U-net model
 print( "Check: final output of the network:")
 print( model.output_shape)
 plot(model, to_file='./'+name_experiment+'/'+name_experiment + '_model.png')   #check how the model looks like

@@ -25,15 +25,25 @@ N_subimgs = 190000
 #if patches are extracted only inside the field of view:
 inside_FOV = False
 #Number of training epochs
-N_epochs = 15
+N_epochs = 5
 batch_size = 32
 #if running with nohup
 nohup = True
 # depth of the network
-network_depth=3
+network_depth=2
 # number of filters
-number_filters=32,64,128
+number_filters=16,16
+#number_filters=64,16,32
+# pooling configuration 1=max, 2=average
+pooling_type=1
+# kernel
+kernel=1
+#optimizer
+optimizer=1
 
+[ga settings]
+generations=5
+individuals=5
 
 [testing settings]
 #Choose the model to test: best==epoch with min loss, last==last epoch
