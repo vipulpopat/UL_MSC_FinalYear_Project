@@ -121,9 +121,20 @@ patch_width = patches_imgs_train.shape[3]
 #====================the GA Code is being kept in here========================
 compare = lambda x, y: collections.Counter(x) == collections.Counter(y)
 
+#filter_count = [16, 32, 64, 256] #number of filters
+# mapped values = [0,0][0,1][1,0][1,1]
+#depth_types = [1,2,3,4]
+# mapped values = [0,0][0,1][1,0][1,1]
+#kernel = [1,2,3,4] = (3,3),(5,5),(3,5),(5,3)
+# mapped values = [0,0][0,1][1,0][1,1]
+#optimizer = [1,2,3,4] = 'sgd', 'adam', 'adamax', 'nadam'
+# mapped values = [0,0][0,1][1,0][1,1]
+#pooling_types = [1,2]
+# mapped values = [0][1]
+
 n=2
 def get_unet_params(binary_list):
-    d, f, p = 1, [], 1
+    d, f, k, o, p = 1, [], 1, 1, 1
     final = [binary_list[i * n:(i + 1) * n] for i in range((len(binary_list) + n - 1) // n )]
     if (compare(final[0],[0,0])):
         d=1
@@ -142,7 +153,7 @@ def get_unet_params(binary_list):
     else:
         p = 2
         
-    return d,f,p
+    return d,f,k,o,p
     
 def get_filter_count(cb):
     if (compare(cb,[0,0])):
@@ -153,6 +164,16 @@ def get_filter_count(cb):
         return 64
     elif (compare(cb,[1,1])):
         return 256
+
+def get_int_config(cb):
+    if (compare(cb,[0,0])):
+        return 1
+    elif (compare(cb,[0,1])):
+        return 2
+    elif (compare(cb,[1,0])):
+        return 3
+    elif (compare(cb,[1,1])):
+        return 4
     
 creator.create('FitnessMin', base.Fitness, weights=(-1.0,))
 creator.create('Individual', list, fitness=creator.FitnessMin)

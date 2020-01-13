@@ -52,22 +52,12 @@ def get_decoder_part(inputs, numberOfFilters, encoder, kernel):
     return conv
 
 #Define the neural network
-def get_unet(n_ch,patch_height,patch_width, network_depth, number_filters, pooling_type, kernel, model_optimizer):
-    print('get_unet() '+str(n_ch) + str(patch_height) + str(patch_width) + str(network_depth) + str(number_filters) + str(kernel) + str(optimizer))
+def get_unet(n_ch,patch_height,patch_width, network_depth, number_filters, pooling_types, kernels, model_optimizer):
+    print('get_unet() '+str(n_ch) + str(patch_height) + str(patch_width) + str(network_depth) + str(number_filters) + str(kernel) + str(model_optimizer))
     inputs = Input(shape=(n_ch,patch_height,patch_width))
 
     if network_depth != len(number_filters):
         raise ValueError('network_depth and number_filters count should be the same')
-
-    # get the kernel tuple
-    if (kernel == 1):
-        kernel_tuple = (3,3)
-    elif (kernel == 2):
-        kernel_tuple = (5,5)
-    elif (kernel == 3):
-        kernel_tuple = (3,5)
-    else:
-        kernel_tuple = (5,3)
 
     if (model_optimizer == 1):
         optimizer_string = 'sgd'
@@ -82,10 +72,13 @@ def get_unet(n_ch,patch_height,patch_width, network_depth, number_filters, pooli
     network = inputs
 
     for d in range(1, network_depth+1):
+        kernel_tuple = get_kernel_tuple(int(kernels[d-1]))
+        pooling_type = pooling_types[d-1]
         network, encoder = get_encoder_part(network, int(number_filters[d-1]), d != network_depth, pooling_type, kernel_tuple)
         encoders.append(encoder)
 
     for d in range(network_depth-1, 0, -1):
+        kernel_tuple = get_kernel_tuple(int(kernels[d-1]))
         network = get_decoder_part(network, int(number_filters[d-1]), encoders[d-1], kernel_tuple)
 
     network = Conv2D(2, (1, 1), activation='relu',padding='same',data_format='channels_first')(network)
@@ -100,6 +93,21 @@ def get_unet(n_ch,patch_height,patch_width, network_depth, number_filters, pooli
     model.compile(optimizer=optimizer_string, loss='categorical_crossentropy',metrics=['accuracy'])
 
     return model
+
+def get_kernel_tuple(kernel_type):
+        # get the kernel tuple
+    kernel_tuple = (3,3)
+
+    if (kernel_type == 1):
+        kernel_tuple = (3,3)
+    elif (kernel_type == 2):
+        kernel_tuple = (5,5)
+    elif (kernel_type == 3):
+        kernel_tuple = (7,7)
+    else:
+        kernel_tuple = (9,9)
+
+    return kernel_tuple
 
 #Define the neural network gnet
 #you need change function call "get_unet" to "get_gnet" in line 166 before use this network
@@ -199,11 +207,11 @@ patch_height = patches_imgs_train.shape[2]
 patch_width = patches_imgs_train.shape[3]
 network_depth = int(config.get('training settings','network_depth'))
 number_filters = config.get('training settings','number_filters').split(',')
-pooling_type = int(config.get('training settings','pooling_type'))
-kernel = int(config.get('training settings','kernel'))
+pooling_types = config.get('training settings','pooling_types').split(',')
+kernels = config.get('training settings','kernels').split(',')
 optimizer = int(config.get('training settings','optimizer'))
 
-model = get_unet(n_ch, patch_height, patch_width, network_depth, number_filters, pooling_type, (3,3), 'adam')  #the U-net model
+model = get_unet(n_ch, patch_height, patch_width, network_depth, number_filters, pooling_types, kernels, optimizer)  #the U-net model
 print( "Check: final output of the network:")
 print( model.output_shape)
 plot(model, to_file='./'+name_experiment+'/'+name_experiment + '_model.png')   #check how the model looks like

@@ -35,9 +35,9 @@ network_depth=2
 number_filters=16,16
 #number_filters=64,16,32
 # pooling configuration 1=max, 2=average
-pooling_type=1
+pooling_types=1,2
 # kernel
-kernel=1
+kernels=1,1
 #optimizer
 optimizer=1
 
