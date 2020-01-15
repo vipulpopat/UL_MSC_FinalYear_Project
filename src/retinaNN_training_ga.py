@@ -17,7 +17,7 @@ from deap import base, creator, tools, algorithms
 
 from keras.models import Model
 from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Reshape, core, Dropout, AveragePooling2D
-from keras.optimizers import Adam
+from keras import optimizers
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
 from keras import backend as K
 from keras.utils.vis_utils import plot_model as plot
@@ -31,11 +31,11 @@ from help_functions import *
 from extract_patches import get_data_training
 
 
-def get_encoder_part(inputs, numberOfFilters, addPoolingLayer, pooling_type):
-    print('get_encoder_part()' + str(inputs) + str(numberOfFilters) + str(addPoolingLayer))
-    conv1 = Conv2D(numberOfFilters, (3, 3), activation='relu', padding='same',data_format='channels_first')(inputs)
+def get_encoder_part(inputs, numberOfFilters, addPoolingLayer, pooling_type, kernel):
+    print(f'get_encoder_part() {inputs} {numberOfFilters} {addPoolingLayer} {kernel} {pooling_type}')
+    conv1 = Conv2D(numberOfFilters, kernel, activation='relu', padding='same',data_format='channels_first')(inputs)
     conv1 = Dropout(0.2)(conv1)
-    conv1 = Conv2D(numberOfFilters, (3, 3), activation='relu', padding='same',data_format='channels_first')(conv1)
+    conv1 = Conv2D(numberOfFilters, kernel, activation='relu', padding='same',data_format='channels_first')(conv1)
     if (addPoolingLayer):
         if pooling_type == 1:
             pool1 = MaxPooling2D((2, 2))(conv1)
@@ -45,32 +45,44 @@ def get_encoder_part(inputs, numberOfFilters, addPoolingLayer, pooling_type):
     else:
         return conv1, conv1
 
-def get_decoder_part(inputs, numberOfFilters, encoder):
-    print('get_decoder_part()' + str(inputs) + str(numberOfFilters) + str(encoder))
+def get_decoder_part(inputs, numberOfFilters, encoder, kernel):
+    print(f'get_decoder_part() {inputs} {numberOfFilters} {encoder} {kernel}')
     up = UpSampling2D(size=(2, 2))(inputs)
     up = concatenate([encoder, up],axis=1)
-    conv = Conv2D(numberOfFilters, (3, 3), activation='relu', padding='same',data_format='channels_first')(up)
+    conv = Conv2D(numberOfFilters, kernel, activation='relu', padding='same',data_format='channels_first')(up)
     conv = Dropout(0.2)(encoder)
-    conv = Conv2D(numberOfFilters, (3, 3), activation='relu', padding='same',data_format='channels_first')(conv)
+    conv = Conv2D(numberOfFilters, kernel, activation='relu', padding='same',data_format='channels_first')(conv)
     return conv
 
 #Define the neural network
-def get_unet(n_ch,patch_height,patch_width, network_depth, number_filters, pooling_type):
-    print('get_unet() '+str(n_ch) + str(patch_height) + str(patch_width) + str(network_depth) + str(number_filters))
+def get_unet(n_ch,patch_height,patch_width, network_depth, number_filters, pooling_types, kernels, model_optimizer):
+    print(f'get_unet() {n_ch} {patch_height} {patch_width} {network_depth} {number_filters} {kernels} {pooling_types} {model_optimizer}')
     inputs = Input(shape=(n_ch,patch_height,patch_width))
 
     if network_depth != len(number_filters):
         raise ValueError('network_depth and number_filters count should be the same')
 
+    if (model_optimizer == 1):
+        optimizer_string = 'sgd'
+    elif (model_optimizer == 2):
+        optimizer_string = 'adam'
+    elif (model_optimizer == 3):
+        optimizer_string = 'adamax'
+    else:
+        optimizer_string = 'nadam'
+
     encoders = []
     network = inputs
 
     for d in range(1, network_depth+1):
-        network, encoder = get_encoder_part(network, int(number_filters[d-1]), d != network_depth, pooling_type)
+        kernel_tuple = get_kernel_tuple(int(kernels[d-1]))
+        pooling_type = pooling_types[d-1]
+        network, encoder = get_encoder_part(network, int(number_filters[d-1]), d != network_depth, pooling_type, kernel_tuple)
         encoders.append(encoder)
 
     for d in range(network_depth-1, 0, -1):
-        network = get_decoder_part(network, int(number_filters[d-1]), encoders[d-1])
+        kernel_tuple = get_kernel_tuple(int(kernels[d-1]))
+        network = get_decoder_part(network, int(number_filters[d-1]), encoders[d-1], kernel_tuple)
 
     network = Conv2D(2, (1, 1), activation='relu',padding='same',data_format='channels_first')(network)
     network = core.Reshape((2,patch_height*patch_width))(network)
@@ -81,9 +93,25 @@ def get_unet(n_ch,patch_height,patch_width, network_depth, number_filters, pooli
     model = Model(inputs=inputs, outputs=network)        
 
     # sgd = SGD(lr=0.01, decay=1e-6, momentum=0.3, nesterov=False)
-    model.compile(optimizer='sgd', loss='categorical_crossentropy',metrics=['accuracy'])
+    model.compile(optimizer=optimizer_string, loss='categorical_crossentropy',metrics=['accuracy'])
 
     return model
+
+def get_kernel_tuple(kernel_type):
+    print(f'get_kernel_tuple({kernel_type})')
+        # get the kernel tuple
+    kernel_tuple = (3,3)
+
+    if (kernel_type == 1):
+        kernel_tuple = (3,3)
+    elif (kernel_type == 2):
+        kernel_tuple = (5,5)
+    elif (kernel_type == 3):
+        kernel_tuple = (7,7)
+    else:
+        kernel_tuple = (9,9)
+
+    return kernel_tuple
 
 #========= Load settings from Config file
 config = configparser.RawConfigParser()
@@ -98,6 +126,8 @@ N_epochs = int(config.get('training settings', 'N_epochs'))
 batch_size = int(config.get('training settings', 'batch_size'))
 N_generations = int(config.get('ga settings', 'generations'))
 N_individuals = int(config.get('ga settings', 'individuals'))
+CXPB = float(config.get('ga settings', 'cxpb'))
+MUTPB = float(config.get('ga settings', 'mutpb'))
 
 
 #============ Load the data and divided in patches
@@ -121,65 +151,65 @@ patch_width = patches_imgs_train.shape[3]
 #====================the GA Code is being kept in here========================
 compare = lambda x, y: collections.Counter(x) == collections.Counter(y)
 
-#filter_count = [16, 32, 64, 256] #number of filters
-# mapped values = [0,0][0,1][1,0][1,1]
-#depth_types = [1,2,3,4]
-# mapped values = [0,0][0,1][1,0][1,1]
-#kernel = [1,2,3,4] = (3,3),(5,5),(3,5),(5,3)
-# mapped values = [0,0][0,1][1,0][1,1]
-#optimizer = [1,2,3,4] = 'sgd', 'adam', 'adamax', 'nadam'
-# mapped values = [0,0][0,1][1,0][1,1]
-#pooling_types = [1,2]
-# mapped values = [0][1]
-
-n=2
 def get_unet_params(binary_list):
-    d, f, k, o, p = 1, [], 1, 1, 1
-    final = [binary_list[i * n:(i + 1) * n] for i in range((len(binary_list) + n - 1) // n )]
-    if (compare(final[0],[0,0])):
+    d, f, k, o, p = 1, [], [], 1, []
+    
+    depth_bin = binary_list[0:2]
+    if (compare(depth_bin,[0,0])):
         d=1
-    elif (compare(final[0],[0,1])):
+    elif (compare(depth_bin,[0,1])):
         d=2
-    elif (compare(final[0],[1,0])):
+    elif (compare(depth_bin,[1,0])):
         d=3
-    elif (compare(final[0],[1,1])):
+    elif (compare(depth_bin,[1,1])):
         d=4
         
-    for i in range(1,d+1):
-        f.append(get_filter_count(final[i]))
+    filter_binary = binary_list[2:14]        
+    k_b = binary_list[14:22]
+    o_b = binary_list[22:24]
+    p_b = binary_list[24:28]
+
+    for i in range(0,d):
+        f.append(get_filter_count(filter_binary[i*3:(i*3+3)]))
+        k.append(get_bin_count(k_b[i*2:(i*2+2)]))
+        p.append(get_bin_count(p_b[i:(i+1)]))
         
-    if sum(final[5]) == 0:
-        p = 1
-    else:
-        p = 2
-        
+    o = get_bin_count(o_b)
+    
     return d,f,k,o,p
     
 def get_filter_count(cb):
-    if (compare(cb,[0,0])):
+    if (compare(cb,[0,0,0])):
+        return 8
+    elif (compare(cb,[0,0,1])):
         return 16
-    elif (compare(cb,[0,1])):
+    elif (compare(cb,[0,1,0])):
         return 32
-    elif (compare(cb,[1,0])):
+    elif (compare(cb,[0,1,1])):
         return 64
-    elif (compare(cb,[1,1])):
-        return 256
-
-def get_int_config(cb):
-    if (compare(cb,[0,0])):
-        return 1
-    elif (compare(cb,[0,1])):
-        return 2
-    elif (compare(cb,[1,0])):
-        return 3
-    elif (compare(cb,[1,1])):
-        return 4
+    elif (compare(cb,[1,0,0])):
+        return 96
+    elif (compare(cb,[1,0,1])):
+        return 128
+    elif (compare(cb,[1,1,0])):
+        return 192
+    elif (compare(cb,[1,1,1])):
+        return 256  
     
-creator.create('FitnessMin', base.Fitness, weights=(-1.0,))
+def get_bin_count(final):
+    if (compare(final,[0,0]) or (sum(final) == 0)):
+        return 1
+    elif (compare(final,[0,1]) or (sum(final) == 1)):
+        return 2
+    elif (compare(final,[1,0])):
+        return 3
+    else:
+        return 4
+        
+creator.create('FitnessMin', base.Fitness, weights=(1.0,))
 creator.create('Individual', list, fitness=creator.FitnessMin)
 
-NETWORK_DEPTH=4+1
-INDIVIDUAL_SIZE = NETWORK_DEPTH*2 + 1
+INDIVIDUAL_SIZE = 2 + (4*3) + (4*2) + 2 + (4)
 
 toolbox = base.Toolbox()
 toolbox.register("attr_bool", random.randint, 0, 1)
@@ -193,24 +223,23 @@ toolbox.register("select", tools.selTournament, tournsize=3)
 
 def eval_model_loss_function(individual):
     print(f'GA------------Individual = {individual}, parameters={get_unet_params(individual)}')
-    d,f,p = get_unet_params(individual)
-    model1 = get_unet(n_ch, patch_height, patch_width, d, f, p)  #the U-net model
-    print('GA Model output shape = ',model1.output_shape)
-    print('GA Model Summary', model1.summary())
-    print(f'GA Model train imgs={patches_imgs_train.shape}, mask={patches_masks_train.shape}')
+    d,f,k,o,p = get_unet_params(individual)
+    model1 = get_unet(n_ch, patch_height, patch_width, d, f, p, k, o)  #the U-net model
+    print('GA------------Model Summary', model1.summary())
     history = model1.fit(patches_imgs_train, patches_masks_train, nb_epoch=N_epochs, batch_size=batch_size, verbose=2, shuffle=True, validation_split=0.1)
-    fitness = min(history.history['val_loss'])
-    print(f'GA------------Depth={d}, Filters = {f}, pooling_type={p}, fitness={fitness}')
+    fitness = max(history.history['val_acc'])
+    fitness_vector=history.history['val_acc']
+    print(f'GA------------fitness vector={fitness_vector}')
+    print(f'GA------------Depth={d}, Filters = {f}, pooling_type={p}, kernels={k}, optimizer={o}, fitness={fitness}')
     return fitness,
 
 toolbox.register("evaluate", eval_model_loss_function)
 
 pop = toolbox.population(n=N_individuals)
 
-CXPB, MUTPB, NGEN = 0.5, 0.2, N_generations
 print( "GA------------Starting the Evolution Algorithm...")
 
-for g in range(NGEN):
+for g in range(N_generations):
     print(f"GA-------------- Generation {g} --")
 
     # Select the next genereation individuals
@@ -237,7 +266,7 @@ for g in range(NGEN):
     for ind, fit in zip(invalid_ind, fitnesses):
         ind.fitness.values = fit
 
-    print(f'GA------------\tEvaluated {len(pop)} individuals')
+    print(f'GA------------Generation {g}---\tEvaluated {len(pop)} individuals')
 
     pop[:] = offspring
 
@@ -248,14 +277,17 @@ for g in range(NGEN):
     sum2 = sum(x*x for x in fits)
     std = abs(sum2 / length - mean**2)**0.5
 
-    print(f"GA------------\tMin {min(fits)}")
-    print(f"GA------------\tMax {max(fits)}")
-    print(f"GA------------\tAvg {mean}")
-    print(f"GA------------\tStd {std}")
+    top = tools.selBest(pop, k=1)
+    print(f"GA------------Generation {g}\tMin {min(fits)}")
+    print(f"GA------------Generation {g}\tMax {max(fits)}")
+    print(f"GA------------Generation {g}\tAvg {mean}")
+    print(f"GA------------Generation {g}\tStd {std}")
+    print(f"GA------------Generation {g}\tBest UNet Configuration {get_unet_params(top[0])}")
+    print(f"GA------------End of Generation {g}")
         
 top = tools.selBest(pop, k=1)
 
-print(f'GA------------U net configuration = {get_unet_params(top[0])}')
+print(f'GA------------Across Generations, U net configuration = {get_unet_params(top[0])}')
 best_d, best_f, best_p = get_unet_params(top[0])
 
 #=============================================================
@@ -273,7 +305,7 @@ open('./'+name_experiment+'/'+name_experiment +'_architecture.json', 'w').write(
 
 
 #============  Training ==================================
-checkpointer = ModelCheckpoint(filepath='./'+name_experiment+'/'+name_experiment +'_best_weights.h5', verbose=1, monitor='val_loss', mode='auto', save_best_only=True) #save at each epoch if the validation decreased
+checkpointer = ModelCheckpoint(filepath='./'+name_experiment+'/'+name_experiment +'_best_weights.h5', verbose=1, monitor='val_acc', mode='auto', save_best_only=True) #save at each epoch if the validation decreased
 
 
 # def step_decay(epoch):

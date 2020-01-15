@@ -29,7 +29,7 @@ from extract_patches import get_data_training
 
 
 def get_encoder_part(inputs, numberOfFilters, addPoolingLayer, pooling_type, kernel):
-    print('get_encoder_part()' + str(inputs) + str(numberOfFilters) + str(addPoolingLayer) + str(kernel))
+    print(f'get_encoder_part() {inputs} {numberOfFilters} {addPoolingLayer} {kernel} {pooling_type}')
     conv1 = Conv2D(numberOfFilters, kernel, activation='relu', padding='same',data_format='channels_first')(inputs)
     conv1 = Dropout(0.2)(conv1)
     conv1 = Conv2D(numberOfFilters, kernel, activation='relu', padding='same',data_format='channels_first')(conv1)
@@ -43,7 +43,7 @@ def get_encoder_part(inputs, numberOfFilters, addPoolingLayer, pooling_type, ker
         return conv1, conv1
 
 def get_decoder_part(inputs, numberOfFilters, encoder, kernel):
-    print('get_decoder_part()' + str(inputs) + str(numberOfFilters) + str(encoder) + str(kernel))
+    print(f'get_decoder_part() {inputs} {numberOfFilters} {encoder} {kernel}')
     up = UpSampling2D(size=(2, 2))(inputs)
     up = concatenate([encoder, up],axis=1)
     conv = Conv2D(numberOfFilters, kernel, activation='relu', padding='same',data_format='channels_first')(up)
@@ -53,7 +53,7 @@ def get_decoder_part(inputs, numberOfFilters, encoder, kernel):
 
 #Define the neural network
 def get_unet(n_ch,patch_height,patch_width, network_depth, number_filters, pooling_types, kernels, model_optimizer):
-    print('get_unet() '+str(n_ch) + str(patch_height) + str(patch_width) + str(network_depth) + str(number_filters) + str(kernel) + str(model_optimizer))
+    print(f'get_unet() {n_ch} {patch_height} {patch_width} {network_depth} {number_filters} {kernels} {pooling_types} {model_optimizer}')
     inputs = Input(shape=(n_ch,patch_height,patch_width))
 
     if network_depth != len(number_filters):
@@ -95,6 +95,7 @@ def get_unet(n_ch,patch_height,patch_width, network_depth, number_filters, pooli
     return model
 
 def get_kernel_tuple(kernel_type):
+    print(f'get_kernel_tuple({kernel_type})')
         # get the kernel tuple
     kernel_tuple = (3,3)
 
@@ -108,67 +109,6 @@ def get_kernel_tuple(kernel_type):
         kernel_tuple = (9,9)
 
     return kernel_tuple
-
-#Define the neural network gnet
-#you need change function call "get_unet" to "get_gnet" in line 166 before use this network
-def get_gnet(n_ch,patch_height,patch_width):
-    inputs = Input((n_ch, patch_height, patch_width))
-    conv1 = Convolution2D(32, 3, 3, activation='relu', border_mode='same')(inputs)
-    conv1 = Dropout(0.2)(conv1)
-    conv1 = Convolution2D(32, 3, 3, activation='relu', border_mode='same')(conv1)
-    up1 = UpSampling2D(size=(2, 2))(conv1)
-    #
-    conv2 = Convolution2D(16, 3, 3, activation='relu', border_mode='same')(up1)
-    conv2 = Dropout(0.2)(conv2)
-    conv2 = Convolution2D(16, 3, 3, activation='relu', border_mode='same')(conv2)
-    pool1 = MaxPooling2D(pool_size=(2, 2))(conv2)
-    #
-    conv3 = Convolution2D(32, 3, 3, activation='relu', border_mode='same')(pool1)
-    conv3 = Dropout(0.2)(conv3)
-    conv3 = Convolution2D(32, 3, 3, activation='relu', border_mode='same')(conv3)
-    pool2 = MaxPooling2D(pool_size=(2, 2))(conv3)
-    #
-    conv4 = Convolution2D(64, 3, 3, activation='relu', border_mode='same')(pool2)
-    conv4 = Dropout(0.2)(conv4)
-    conv4 = Convolution2D(64, 3, 3, activation='relu', border_mode='same')(conv4)
-    pool3 = MaxPooling2D(pool_size=(2, 2))(conv4)
-    #
-    conv5 = Convolution2D(128, 3, 3, activation='relu', border_mode='same')(pool3)
-    conv5 = Dropout(0.2)(conv5)
-    conv5 = Convolution2D(128, 3, 3, activation='relu', border_mode='same')(conv5)
-    #
-    up2 = merge([UpSampling2D(size=(2, 2))(conv5), conv4], mode='concat', concat_axis=1)
-    conv6 = Convolution2D(64, 3, 3, activation='relu', border_mode='same')(up2)
-    conv6 = Dropout(0.2)(conv6)
-    conv6 = Convolution2D(64, 3, 3, activation='relu', border_mode='same')(conv6)
-    #
-    up3 = merge([UpSampling2D(size=(2, 2))(conv6), conv3], mode='concat', concat_axis=1)
-    conv7 = Convolution2D(32, 3, 3, activation='relu', border_mode='same')(up3)
-    conv7 = Dropout(0.2)(conv7)
-    conv7 = Convolution2D(32, 3, 3, activation='relu', border_mode='same')(conv7)
-    #
-    up4 = merge([UpSampling2D(size=(2, 2))(conv7), conv2], mode='concat', concat_axis=1)
-    conv8 = Convolution2D(16, 3, 3, activation='relu', border_mode='same')(up4)
-    conv8 = Dropout(0.2)(conv8)
-    conv8 = Convolution2D(16, 3, 3, activation='relu', border_mode='same')(conv8)
-    #
-    pool4 = MaxPooling2D(pool_size=(2, 2))(conv8)
-    conv9 = Convolution2D(32, 3, 3, activation='relu', border_mode='same')(pool4)
-    conv9 = Dropout(0.2)(conv9)
-    conv9 = Convolution2D(32, 3, 3, activation='relu', border_mode='same')(conv9)
-    #
-    conv10 = Convolution2D(2, 1, 1, activation='relu', border_mode='same')(conv9)
-    conv10 = core.Reshape((2,patch_height*patch_width))(conv10)
-    conv10 = core.Permute((2,1))(conv10)
-    ############
-    conv10 = core.Activation('softmax')(conv10)
-
-    model = Model(input=inputs, output=conv10)
-
-    # sgd = SGD(lr=0.01, decay=1e-6, momentum=0.3, nesterov=False)
-    model.compile(optimizer='sgd', loss='categorical_crossentropy',metrics=['accuracy'])
-
-    return model
 
 #========= Load settings from Config file
 config = configparser.RawConfigParser()
@@ -206,14 +146,23 @@ n_ch = patches_imgs_train.shape[1]
 patch_height = patches_imgs_train.shape[2]
 patch_width = patches_imgs_train.shape[3]
 network_depth = int(config.get('training settings','network_depth'))
+print(f'network_depth={network_depth}')
 number_filters = config.get('training settings','number_filters').split(',')
+print(f'number_filters={number_filters}')
 pooling_types = config.get('training settings','pooling_types').split(',')
+print(f'pooling_types={pooling_types}')
 kernels = config.get('training settings','kernels').split(',')
+print(f'kernels={kernels}')
 optimizer = int(config.get('training settings','optimizer'))
+print(f'optimizer={optimizer}')
 
 model = get_unet(n_ch, patch_height, patch_width, network_depth, number_filters, pooling_types, kernels, optimizer)  #the U-net model
+
 print( "Check: final output of the network:")
-print( model.output_shape)
+print( f'Model output shape={model.output_shape}')
+print('Model Summary', model.summary())
+print(f'Model train imgs={patches_imgs_train.shape}, mask={patches_masks_train.shape}')
+
 plot(model, to_file='./'+name_experiment+'/'+name_experiment + '_model.png')   #check how the model looks like
 json_string = model.to_json()
 open('./'+name_experiment+'/'+name_experiment +'_architecture.json', 'w').write(json_string)
@@ -239,26 +188,3 @@ model.fit(patches_imgs_train, patches_masks_train, nb_epoch=N_epochs, batch_size
 
 #========== Save and test the last model ===================
 model.save_weights('./'+name_experiment+'/'+name_experiment +'_last_weights.h5', overwrite=True)
-#test the model
-# score = model.evaluate(patches_imgs_test, masks_Unet(patches_masks_test), verbose=0)
-# print('Test score:', score[0])
-# print('Test accuracy:', score[1])
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#

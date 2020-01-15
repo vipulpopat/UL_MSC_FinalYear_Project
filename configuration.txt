@@ -10,7 +10,8 @@ test_border_masks = DRIVE_dataset_borderMasks_test.hdf5
 
 
 [experiment name]
-name = test_parameterized
+#name = test_parameterized
+name = test_experiment1
 
 
 [data attributes]
@@ -25,7 +26,7 @@ N_subimgs = 190000
 #if patches are extracted only inside the field of view:
 inside_FOV = False
 #Number of training epochs
-N_epochs = 5
+N_epochs = 20
 batch_size = 32
 #if running with nohup
 nohup = True
@@ -37,13 +38,15 @@ number_filters=16,16
 # pooling configuration 1=max, 2=average
 pooling_types=1,2
 # kernel
-kernels=1,1
+kernels=1,3
 #optimizer
-optimizer=1
+optimizer=4
 
 [ga settings]
-generations=5
-individuals=5
+generations=10
+individuals=10
+cxpb=0.7
+mutpb=0.1
 
 [testing settings]
 #Choose the model to test: best==epoch with min loss, last==last epoch
