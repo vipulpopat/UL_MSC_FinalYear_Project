@@ -105,7 +105,7 @@ def get_kernel_tuple(kernel_type):
     if (kernel_type == 1):
         kernel_tuple = (3,3)
     elif (kernel_type == 2):
-        kernel_tuple = (5,5)
+        kernel_tuple = (5,5)3,3
     elif (kernel_type == 3):
         kernel_tuple = (7,7)
     else:
@@ -288,12 +288,12 @@ for g in range(N_generations):
 top = tools.selBest(pop, k=1)
 
 print(f'GA------------Across Generations, U net configuration = {get_unet_params(top[0])}')
-best_d, best_f, best_p = get_unet_params(top[0])
+best_d, best_f, best_k, best_o, best_p = get_unet_params(top[0])
 
 #=============================================================
 
 
-model = get_unet(n_ch, patch_height, patch_width, best_d, best_f, best_p)  #the U-net model
+model = get_unet(n_ch, patch_height, patch_width, best_d, best_f, best_p, best_k, best_o)  #the U-net model
 
 
 print( "Check: final output of the network:")

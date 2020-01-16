@@ -170,7 +170,7 @@ open('./'+name_experiment+'/'+name_experiment +'_architecture.json', 'w').write(
 
 
 #============  Training ==================================
-checkpointer = ModelCheckpoint(filepath='./'+name_experiment+'/'+name_experiment +'_best_weights.h5', verbose=1, monitor='val_loss', mode='auto', save_best_only=True) #save at each epoch if the validation decreased
+checkpointer = ModelCheckpoint(filepath='./'+name_experiment+'/'+name_experiment +'_best_weights.h5', verbose=1, monitor='val_acc', mode='auto', save_best_only=True) #save at each epoch if the validation decreased
 
 
 # def step_decay(epoch):
