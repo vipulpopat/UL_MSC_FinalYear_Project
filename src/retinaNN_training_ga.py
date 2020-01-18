@@ -98,14 +98,12 @@ def get_unet(n_ch,patch_height,patch_width, network_depth, number_filters, pooli
     return model
 
 def get_kernel_tuple(kernel_type):
-    print(f'get_kernel_tuple({kernel_type})')
-        # get the kernel tuple
     kernel_tuple = (3,3)
 
     if (kernel_type == 1):
         kernel_tuple = (3,3)
     elif (kernel_type == 2):
-        kernel_tuple = (5,5)3,3
+        kernel_tuple = (5,5)
     elif (kernel_type == 3):
         kernel_tuple = (7,7)
     else:
@@ -206,8 +204,8 @@ def get_bin_count(final):
     else:
         return 4
         
-creator.create('FitnessMin', base.Fitness, weights=(1.0,))
-creator.create('Individual', list, fitness=creator.FitnessMin)
+creator.create('FitnessMax', base.Fitness, weights=(1.0,))
+creator.create('Individual', list, fitness=creator.FitnessMax)
 
 INDIVIDUAL_SIZE = 2 + (4*3) + (4*2) + 2 + (4)
 
