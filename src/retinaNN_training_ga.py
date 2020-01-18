@@ -124,8 +124,8 @@ name_experiment = config.get('experiment name', 'name')
 #training settings
 N_epochs = int(config.get('training settings', 'N_epochs'))
 batch_size = int(config.get('training settings', 'batch_size'))
-N_generations = int(config.get('ga settings', 'generations'))
-N_individuals = int(config.get('ga settings', 'individuals'))
+NGEN = int(config.get('ga settings', 'generations'))
+NPOP = int(config.get('ga settings', 'individuals'))
 CXPB = float(config.get('ga settings', 'cxpb'))
 MUTPB = float(config.get('ga settings', 'mutpb'))
 
@@ -212,14 +212,24 @@ creator.create('Individual', list, fitness=creator.FitnessMin)
 INDIVIDUAL_SIZE = 2 + (4*3) + (4*2) + 2 + (4)
 
 toolbox = base.Toolbox()
-toolbox.register("attr_bool", random.randint, 0, 1)
-toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_bool, n=INDIVIDUAL_SIZE)
+toolbox = base.Toolbox()
 
+def generateES(ind_cls, strg_cls, size):
+    ind = ind_cls(random.randint(0,1) for _ in range(size))
+    ind.strategy = strg_cls(random.randint(0,1) for _ in range(size))
+    return ind
+
+# generation functions
+toolbox.register("individual", generateES, creator.Individual, creator.Strategy, INDIVIDUAL_SIZE)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
-toolbox.register("mate", tools.cxTwoPoints)
-toolbox.register("mutate", tools.mutFlipBit, indpb=0.2)
-toolbox.register("select", tools.selTournament, tournsize=3)
+toolbox.register("mate", tools.cxOnePoint)
+toolbox.register("mutate", tools.mutFlipBit, indpb=0.05)
+
+def selElitistAndTournament(individuals, k, frac_elitist, tournsize):
+    return tools.selBest(individuals, int(k*frac_elitist)) + tools.selTournament(individuals, int(k*(1-frac_elitist)), tournsize=tournsize)
+
+toolbox.register("select", selElitistAndTournament, frac_elitist=0.1 , tournsize=3)
 
 def eval_model_loss_function(individual):
     print(f'GA------------Individual = {individual}, parameters={get_unet_params(individual)}')
@@ -235,60 +245,25 @@ def eval_model_loss_function(individual):
 
 toolbox.register("evaluate", eval_model_loss_function)
 
-pop = toolbox.population(n=N_individuals)
+# initialize parameters
+pop = toolbox.population(n=NPOP)
+hof = tools.HallOfFame(NPOP * NGEN)
+stats = tools.Statistics(lambda ind: ind.fitness.values)
+stats.register("avg", np.mean)
+stats.register("min", np.min)
+stats.register("max", np.max)
+stats.register("std", np.std)
 
-print( "GA------------Starting the Evolution Algorithm...")
+# genetic algorithm
+pop, logbook = algorithms.eaSimple(pop, toolbox, cxpb=CXPB, mutpb=MUTPB,
+                               ngen=NGEN, stats=stats, halloffame=hof,
+                               verbose=True)
 
-for g in range(N_generations):
-    print(f"GA-------------- Generation {g} --")
-
-    # Select the next genereation individuals
-    offspring = toolbox.select(pop, len(pop))
-
-    # Clone the selected individuals
-    offspring = list(map(toolbox.clone, offspring))
-
-    # Apply crossover and mutation on the offspring
-    for child1, child2 in zip(offspring[::2], offspring[1::2]):
-        if random.random() < CXPB:
-            toolbox.mate(child1, child2)
-            del child1.fitness.values
-            del child2.fitness.values
-
-    for mutant in offspring:
-        if random.random() < MUTPB:
-            toolbox.mutate(mutant)
-            del mutant.fitness.values
-
-    # Evaluate the individuals with an invalid fitness
-    invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-    fitnesses = map(toolbox.evaluate, invalid_ind)
-    for ind, fit in zip(invalid_ind, fitnesses):
-        ind.fitness.values = fit
-
-    print(f'GA------------Generation {g}---\tEvaluated {len(pop)} individuals')
-
-    pop[:] = offspring
-
-    fits = [ind.fitness.values[0] for ind in pop]
-
-    length = len(pop)
-    mean = sum(fits) / length
-    sum2 = sum(x*x for x in fits)
-    std = abs(sum2 / length - mean**2)**0.5
-
-    top = tools.selBest(pop, k=1)
-    print(f"GA------------Generation {g}\tMin {min(fits)}")
-    print(f"GA------------Generation {g}\tMax {max(fits)}")
-    print(f"GA------------Generation {g}\tAvg {mean}")
-    print(f"GA------------Generation {g}\tStd {std}")
-    print(f"GA------------Generation {g}\tBest UNet Configuration {get_unet_params(top[0])}")
-    print(f"GA------------End of Generation {g}")
-        
-top = tools.selBest(pop, k=1)
-
-print(f'GA------------Across Generations, U net configuration = {get_unet_params(top[0])}')
-best_d, best_f, best_k, best_o, best_p = get_unet_params(top[0])
+print('GA------------', logbook)
+print('GA------------Best possible candidates ')
+for top in hof.items:
+    print(f'GA------------Across Generations, U net configuration = {get_unet_params(top)}')
+best_d, best_f, best_k, best_o, best_p = get_unet_params(hof.items[0])
 
 #=============================================================
 
