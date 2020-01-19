@@ -205,7 +205,8 @@ def get_bin_count(final):
         return 4
         
 creator.create('FitnessMax', base.Fitness, weights=(1.0,))
-creator.create('Individual', list, fitness=creator.FitnessMax)
+creator.create('Individual', list, typecode="I", fitness=creator.FitnessMax, strategy=None)
+creator.create("Strategy", list, typecode="I")
 
 INDIVIDUAL_SIZE = 2 + (4*3) + (4*2) + 2 + (4)
 
