@@ -47,6 +47,7 @@ generations=10
 individuals=10
 cxpb=0.7
 mutpb=0.1
+previous_population=
 
 [testing settings]
 #Choose the model to test: best==epoch with min loss, last==last epoch

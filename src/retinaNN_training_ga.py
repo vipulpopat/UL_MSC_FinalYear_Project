@@ -22,6 +22,7 @@ from keras.callbacks import ModelCheckpoint, LearningRateScheduler
 from keras import backend as K
 from keras.utils.vis_utils import plot_model as plot
 from keras.optimizers import SGD
+import ast
 
 import sys
 sys.path.insert(0, './lib/')
@@ -126,6 +127,14 @@ NGEN = int(config.get('ga settings', 'generations'))
 NPOP = int(config.get('ga settings', 'individuals'))
 CXPB = float(config.get('ga settings', 'cxpb'))
 MUTPB = float(config.get('ga settings', 'mutpb'))
+PREV_GEN = None
+prev_gen_string = config.get('ga settings', 'previous_population')
+use_old_gen = False
+if prev_gen_string:
+    PREV_GEN = ast.literal_eval(prev_gen_string)
+    use_old_gen = True
+
+print("PREV_GEN=", PREV_GEN)
 
 
 #============ Load the data and divided in patches
@@ -211,10 +220,20 @@ creator.create("Strategy", list, typecode="I")
 INDIVIDUAL_SIZE = 2 + (4*3) + (4*2) + 2 + (4)
 
 toolbox = base.Toolbox()
-toolbox = base.Toolbox()
+
+prev_counter = 0
 
 def generateES(ind_cls, strg_cls, size):
-    ind = ind_cls(random.randint(0,1) for _ in range(size))
+    global prev_counter
+    if not use_old_gen:
+        ind = ind_cls(random.randint(0,1) for _ in range(size))
+    else:
+        print('counter=', prev_counter)
+        if prev_counter >= NPOP:
+            prev_counter = prev_counter - 20
+        ind = ind_cls(PREV_GEN[prev_counter])
+        prev_counter += 1
+
     ind.strategy = strg_cls(random.randint(0,1) for _ in range(size))
     return ind
 
@@ -246,6 +265,7 @@ toolbox.register("evaluate", eval_model_loss_function)
 
 # initialize parameters
 pop = toolbox.population(n=NPOP)
+
 hof = tools.HallOfFame(NPOP * NGEN)
 stats = tools.Statistics(lambda ind: ind.fitness.values)
 stats.register("avg", np.mean)
@@ -258,28 +278,30 @@ pop, logbook = algorithms.eaSimple(pop, toolbox, cxpb=CXPB, mutpb=MUTPB,
                                ngen=NGEN, stats=stats, halloffame=hof,
                                verbose=True)
 
-print('GA------------', logbook)
-print('GA------------Best possible candidates ')
-for top in hof.items:
-    print(f'GA------------Across Generations, U net configuration = {get_unet_params(top)}')
-best_d, best_f, best_k, best_o, best_p = get_unet_params(hof.items[0])
+print('GA------------\n', logbook)
+print('GA------------Best possible candidates of last generation')
+print("Best Gen : ", hof.items[0:NPOP])
+
+
+#
+#best_d, best_f, best_k, best_o, best_p = get_unet_params(hof.items[0])
 
 #=============================================================
 
 
-model = get_unet(n_ch, patch_height, patch_width, best_d, best_f, best_p, best_k, best_o)  #the U-net model
+#model = get_unet(n_ch, patch_height, patch_width, best_d, best_f, best_p, best_k, best_o)  #the U-net model
 
 
-print( "Check: final output of the network:")
-print( model.output_shape)
-plot(model, to_file='./'+name_experiment+'/'+name_experiment + '_model.png')   #check how the model looks like
-json_string = model.to_json()
-open('./'+name_experiment+'/'+name_experiment +'_architecture.json', 'w').write(json_string)
+#print( "Check: final output of the network:")
+#print( model.output_shape)
+#plot(model, to_file='./'+name_experiment+'/'+name_experiment + '_model.png')   #check how the model looks like
+#json_string = model.to_json()
+#open('./'+name_experiment+'/'+name_experiment +'_architecture.json', 'w').write(json_string)
 
 
 
 #============  Training ==================================
-checkpointer = ModelCheckpoint(filepath='./'+name_experiment+'/'+name_experiment +'_best_weights.h5', verbose=1, monitor='val_acc', mode='auto', save_best_only=True) #save at each epoch if the validation decreased
+#checkpointer = ModelCheckpoint(filepath='./'+name_experiment+'/'+name_experiment +'_best_weights.h5', verbose=1, monitor='val_acc', mode='auto', save_best_only=True) #save at each epoch if the validation decreased
 
 
 # def step_decay(epoch):
@@ -291,11 +313,11 @@ checkpointer = ModelCheckpoint(filepath='./'+name_experiment+'/'+name_experiment
 #
 # lrate_drop = LearningRateScheduler(step_decay)
 
-model.fit(patches_imgs_train, patches_masks_train, nb_epoch=N_epochs, batch_size=batch_size, verbose=2, shuffle=True, validation_split=0.1, callbacks=[checkpointer])
+#model.fit(patches_imgs_train, patches_masks_train, nb_epoch=N_epochs, batch_size=batch_size, verbose=2, shuffle=True, validation_split=0.1, callbacks=[checkpointer])
 
 
 #========== Save and test the last model ===================
-model.save_weights('./'+name_experiment+'/'+name_experiment +'_last_weights.h5', overwrite=True)
+#model.save_weights('./'+name_experiment+'/'+name_experiment +'_last_weights.h5', overwrite=True)
 #test the model
 # score = model.evaluate(patches_imgs_test, masks_Unet(patches_masks_test), verbose=0)
 # print('Test score:', score[0])
